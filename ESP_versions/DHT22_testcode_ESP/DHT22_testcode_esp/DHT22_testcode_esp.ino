@@ -1,6 +1,6 @@
 #include "DHTesp.h"
 
-const int DHT_PIN = 15;
+const int DHT_PIN = 32;
 
 DHTesp dhtSensor;
 
@@ -13,6 +13,6 @@ void loop() {
   TempAndHumidity  data = dhtSensor.getTempAndHumidity();
   Serial.println("Temp: " + String(data.temperature, 2) + "°C");
   Serial.println("Humidity: " + String(data.humidity, 1) + "%");
-  Serial.println("---");
+  Serial.println("---");  
   delay(2000);
 }
