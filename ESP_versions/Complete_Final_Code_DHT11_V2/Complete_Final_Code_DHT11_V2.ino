@@ -165,7 +165,7 @@ void loop() {
   }
 
   // Alternate LCD display every 3 seconds
-  if (currentTime - lastDisplayTime >= 3000) {
+  if (currentTime - lastDisplayTime >= 2000) {
     lastDisplayTime = currentTime;
     displayToggle = !displayToggle;
 
@@ -253,18 +253,27 @@ int calculateFloodLikelihood(float temperature, float humidity, float pressure) 
 
   return likelihood;
 }
-
-// Function to dynamically update thresholds based on time of day
-void updateDynamicThresholds(int hour) {
-  if (hour >= 6 && hour < 18) {
-    minTempThreshold = 15; // Lower threshold during daytime
-    maxTempThreshold = 35; // Higher threshold during daytime
-    humidityThreshold = 60; // Slightly higher humidity threshold during day
-    pressureThreshold = 1010; // Slightly higher pressure during day
+void updateDynamicThresholds(int currentHour) {
+  // Adjust thresholds dynamically based on the time of day
+  if (currentHour >= 0 && currentHour < 6) {
+    minTempThreshold = 25;
+    maxTempThreshold = 29;
+    humidityThreshold = 48;
+    pressureThreshold = 1012;
+  } else if (currentHour >= 6 && currentHour < 12) {
+    minTempThreshold = 25;
+    maxTempThreshold = 34;
+    humidityThreshold = 41;
+    pressureThreshold = 1014;
+  } else if (currentHour >= 12 && currentHour < 18) {
+    minTempThreshold = 34;
+    maxTempThreshold = 35;
+    humidityThreshold = 25;
+    pressureThreshold = 1012;
   } else {
-    minTempThreshold = 10; // Lower threshold during night
-    maxTempThreshold = 30; // Higher threshold during night
-    humidityThreshold = 70; // Slightly higher humidity threshold at night
-    pressureThreshold = 1005; // Slightly lower pressure at night
+    minTempThreshold = 29;
+    maxTempThreshold = 34;
+    humidityThreshold = 34;
+    pressureThreshold = 1013;
   }
 }
