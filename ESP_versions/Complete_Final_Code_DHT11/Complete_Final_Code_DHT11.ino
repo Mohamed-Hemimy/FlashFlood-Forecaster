@@ -3,10 +3,21 @@
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP085_U.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
+// Wi-Fi Credentials
+const char* ssid = "Galaxy A21S";
+const char* password = "14141414";
+
+// ThingSpeak API Credentials
+const char* server = "http://api.thingspeak.com/update";
+const char* apiKey = "OP69QZXZU16XN4R9";
 
 // Pin Definitions
 #define RAIN_ANALOG 34         // Analog pin for rain sensor
-#define LDR_ANALOG 2          // Analog pin for LDR sensor
 #define Buzzer 26              // Digital pin for rain buzzer
 #define DHT_SENSOR_PIN 13      // ESP32 pin GPIO13 connected to DHT11 sensor
 #define DHT_SENSOR_TYPE DHT11  // Define DHT sensor type
@@ -19,22 +30,44 @@ DHT dht_sensor(DHT_SENSOR_PIN, DHT_SENSOR_TYPE);
 LiquidCrystal_I2C lcd(0x27, 16, 2); // I2C address 0x27, 16x2 LCD
 Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
 
+// NTP Client setup
+WiFiUDP udp;
+NTPClient timeClient(udp, "pool.ntp.org", 2 * 3600, 60000); // GMT+2 (Cairo Time)
+
 // Timing variables
 unsigned long lastDisplayTime = 0;    // Timing for LCD updates
 unsigned long lastMeasurementTime = 0; // Timing for measurements
 unsigned long lastBuzzerTime = 0;     // Timing for rain detection buzzer
 bool displayToggle = false;           // Toggles between LCD screens
 
-// Rain threshold for detection
+// Static Rain Threshold (this does not change)
 const int rainThreshold = 800;
+
+// Dynamic Thresholds (these will change during the day)
+int minTempThreshold = 15;
+int maxTempThreshold = 35;
+int humidityThreshold = 60;
+int pressureThreshold = 1000;
 
 void setup() {
   // Initialize serial communication
   Serial.begin(9600);
 
-  // Initialize rain sensor, LDR, buzzer, and flood LED
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("Connected!");
+
+  // Initialize NTP Client
+  timeClient.begin();
+  timeClient.setTimeOffset(7200); // GMT+2:00 for Cairo
+
+  // Initialize rain sensor, buzzer, and flood LED
   pinMode(RAIN_ANALOG, INPUT);
-  pinMode(LDR_ANALOG, INPUT);
   analogReadResolution(10); // Set ADC resolution to 10 bits
   pinMode(Buzzer, OUTPUT);
   pinMode(DHT_LED, OUTPUT);
@@ -66,6 +99,13 @@ void setup() {
 void loop() {
   unsigned long currentTime = millis(); // Get the current time
 
+  // Update NTP time
+  timeClient.update();
+  int currentHour = timeClient.getHours(); // Get current hour in GMT+2
+
+  // Dynamically adjust the thresholds based on the time of day
+  updateDynamicThresholds(currentHour);
+
   // Take measurements every 3 seconds
   if (currentTime - lastMeasurementTime >= 3000) {
     lastMeasurementTime = currentTime;
@@ -82,9 +122,6 @@ void loop() {
       lastBuzzerTime = currentTime;
     }
 
-    // Read LDR sensor data
-    int ldr_value = analogRead(LDR_ANALOG);
-
     // Read temperature, humidity, and pressure
     float temperature = dht_sensor.readTemperature();
     float humidity = dht_sensor.readHumidity();
@@ -96,10 +133,10 @@ void loop() {
     float heat_index = dht_sensor.computeHeatIndex(temperature, humidity);
 
     // Calculate flash flood likelihood
-    int flashFloodLikelihood = calculateFloodLikelihood(temperature, humidity, pressure, ldr_value);
+    int flashFloodLikelihood = calculateFloodLikelihood(temperature, humidity, pressure);
 
     // Respond to flash flood likelihood with LED
-    if (flashFloodLikelihood >= 70) {
+    if (flashFloodLikelihood >= 50) {
       digitalWrite(DHT_LED, HIGH);
     } else {
       digitalWrite(DHT_LED, LOW);
@@ -119,8 +156,6 @@ void loop() {
     Serial.println(heat_index);
     Serial.print("Pressure (hPa): ");
     Serial.println(pressure);
-    Serial.print("LDR Value: ");
-    Serial.println(ldr_value);
     Serial.print("Flood Likelihood (%): ");
     Serial.println(flashFloodLikelihood);
     Serial.println("===========================");
@@ -131,7 +166,7 @@ void loop() {
       displayToggle = !displayToggle;
 
       if (displayToggle) {
-        // First screen: Rain, Temperature, Humidity, and LDR
+        // First screen: Rain, Temperature, and Humidity
         lcd.clear();
         lcd.setCursor(0, 0);
         lcd.print("Rain:");
@@ -142,8 +177,6 @@ void loop() {
         lcd.setCursor(0, 1);
         lcd.print("H:");
         lcd.print(humidity);
-        lcd.print(" L:");
-        lcd.print(ldr_value);
       } else {
         // Second screen: Pressure, Flood Likelihood, and Heat Index
         lcd.clear();
@@ -157,11 +190,41 @@ void loop() {
         lcd.print(heat_index);
       }
     }
+
+    // Send data to ThingSpeak
+    sendToThingSpeak(temperature, humidity, pressure, isRaining, flashFloodLikelihood, heat_index, rain_amount);
+  }
+}
+
+// Function to send data to ThingSpeak
+void sendToThingSpeak(float temperature, float humidity, float pressure, bool isRaining, int floodLikelihood, float heatIndex, int rain_amount) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String url = String(server) + "?api_key=" + apiKey +
+                 "&field1=" + String(temperature) +
+                 "&field2=" + String(humidity) +
+                 "&field3=" + String(pressure) +
+                 "&field4=" + String(rain_amount) +
+                 "&field5=" + String(floodLikelihood) +
+                 "&field6=" + String(heatIndex) + 
+                 "&field7=" + String(isRaining ? 1 : 0);
+
+    http.begin(url);
+    int httpResponseCode = http.GET();
+    if (httpResponseCode > 0) {
+      Serial.println("Data sent to ThingSpeak successfully.");
+    } else {
+      Serial.print("Error sending data: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+  } else {
+    Serial.println("Wi-Fi not connected.");
   }
 }
 
 // Function to calculate flash flood likelihood
-int calculateFloodLikelihood(float temperature, float humidity, float pressure, int ldr_value) {
+int calculateFloodLikelihood(float temperature, float humidity, float pressure) {
   int likelihood = 0;
 
   // Start with humidity-based calculation
@@ -171,20 +234,41 @@ int calculateFloodLikelihood(float temperature, float humidity, float pressure, 
     else likelihood = 80;
 
     // Adjust based on temperature
-    if (temperature < 20) likelihood += 10;
-    if (temperature > 30) likelihood -= 10;
-    if (temperature > 35) likelihood -= 10;
+    if (temperature < minTempThreshold) likelihood += 10;
+    if (temperature > maxTempThreshold) likelihood -= 10;
 
     // Adjust based on pressure (low pressure indicates potential storms)
-    if (pressure < 1000) likelihood += 10;
-    if (pressure < 980) likelihood += 20;
-
-    // Adjust based on LDR (low light may indicate heavy clouds or night)
-    if (ldr_value < 500) likelihood += 10; // Low light increases likelihood
+    if (pressure < pressureThreshold) likelihood += 10;
   }
 
   // Ensure bounds
   likelihood = constrain(likelihood, 0, 100);
 
   return likelihood;
+}
+
+// Function to update dynamic thresholds based on the current hour
+void updateDynamicThresholds(int currentHour) {
+  // Adjust thresholds dynamically based on the time of day
+  if (currentHour >= 0 && currentHour < 6) {
+    minTempThreshold = 25;
+    maxTempThreshold = 29;
+    humidityThreshold = 48;
+    pressureThreshold = 1012;
+  } else if (currentHour >= 6 && currentHour < 12) {
+    minTempThreshold = 25;
+    maxTempThreshold = 34;
+    humidityThreshold = 41;
+    pressureThreshold = 1014;
+  } else if (currentHour >= 12 && currentHour < 18) {
+    minTempThreshold = 34;
+    maxTempThreshold = 35;
+    humidityThreshold = 25;
+    pressureThreshold = 1012;
+  } else {
+    minTempThreshold = 29;
+    maxTempThreshold = 34;
+    humidityThreshold = 34;
+    pressureThreshold = 1013;
+  }
 }
