@@ -67,7 +67,7 @@ If you'd like to use this project commercially, please contact the author for pe
 
 ## Acknowledgments  
 
-This project was developed as part of the Capstone Program at **Qena STEM School** by **Team 23316**. We would like to express our gratitude to:  
+This project was developed as part of the Capstone at **Qena STEM School** by **Team 23316**. We would like to express our gratitude to:  
 - **Our School Capstone Leaders and Teachers** for their invaluable support and guidance throughout the project.
 - **Open-source communities and contributors** for providing resources that made this project possible.    
 
