@@ -238,9 +238,9 @@ int calculateFloodLikelihood(float temperature, float humidity, float pressure) 
   int likelihood = 0;
 
   // Start with humidity-based calculation
-  if (humidity >= 50) {
-    if (humidity < 60) likelihood = 20;
-    else if (humidity < 80) likelihood = 50;
+  if (humidity >= humidityThreshold) {
+    if (humidity < humidityThreshold + 10) likelihood = 20;
+    else if (humidity < humidityThreshold + 20) likelihood = 50;
     else likelihood = 80;
 
     // Adjust based on temperature
@@ -248,11 +248,12 @@ int calculateFloodLikelihood(float temperature, float humidity, float pressure) 
     if (temperature > maxTempThreshold) likelihood += 10;
 
     // Adjust based on pressure
-    if (pressure < pressureThreshold) likelihood += 30;
+    if (pressure < pressureThreshold) likelihood += 15;
   }
 
   return likelihood;
 }
+
 void updateDynamicThresholds(int currentHour) {
   // Adjust thresholds dynamically based on the time of day
   if (currentHour >= 0 && currentHour < 6) {
