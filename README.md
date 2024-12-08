@@ -43,7 +43,7 @@ FlashFlood Forecaster is an IoT-based system designed to predict and detect flas
 
 No setup is required! Simply:  
 1. Download this repository.  
-2. Open the code file in the Arduino IDE.  
+2. Open the "Complete_Final_Code_DHT11_V3.ino" code file in the Arduino IDE.  
 3. Upload it to the ESP-32 microcontroller.  
 
 ---
